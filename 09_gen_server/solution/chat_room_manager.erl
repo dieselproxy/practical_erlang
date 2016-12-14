@@ -99,8 +99,8 @@ handle_call({create_room, RoomName}, #state{rooms = Rooms, max_rooms = MaxRooms}
     case maps:size(Rooms) of
         S when S >= MaxRooms -> {{error, room_limit}, State};
         _ -> RoomId = make_ref(),
-             Rooms2 = maps:put(RoomId, #room{id = RoomId, name = RoomName}, Rooms),
-             {{ok, RoomId}, State#state{rooms = Rooms2}}
+             NewRoom = #room{id = RoomId, name = RoomName},
+             {{ok, RoomId}, State#state{rooms = Rooms#{RoomId => NewRoom}}}
     end;
 
 handle_call({remove_room, RoomId}, #state{rooms = Rooms} = State) ->
@@ -119,9 +119,12 @@ handle_call(get_rooms, #state{rooms = Rooms} = State) ->
 handle_call({add_user, RoomId, UserName}, #state{rooms = Rooms} = State) ->
     case maps:find(RoomId, Rooms) of
         {ok, #room{users = Users} = Room} ->
-            Room2 = Room#room{users = [UserName | Users]},
-            Rooms2 = maps:put(RoomId, Room2, Rooms),
-            {ok, State#state{rooms = Rooms2}};
+            case lists:member(UserName, Users) of
+                false ->
+                    Room2 = Room#room{users = [UserName | Users]},
+                    {ok, State#state{rooms = Rooms#{RoomId => Room2}}};
+                true -> {{error, user_is_in_room}, State}
+            end;
         error -> {{error, room_not_found}, State}
     end;
 
@@ -132,8 +135,7 @@ handle_call({remove_user, RoomId, UserName}, #state{rooms = Rooms} = State) ->
                 true ->
                     Users2 = lists:delete(UserName, Users),
                     Room2 = Room#room{users = Users2},
-                    Rooms2 = maps:put(RoomId, Room2, Rooms),
-                    {ok, State#state{rooms = Rooms2}};
+                    {ok, State#state{rooms = Rooms#{RoomId => Room2}}};
                 false -> {{error, user_not_in_room}, State}
             end;
         error -> {{error, room_not_found}, State}
@@ -154,8 +156,7 @@ handle_call({send_message, RoomId, UserName, Message}, #state{rooms = Rooms} = S
                 true ->
                     Msg = {UserName, Message},
                     Room2 = Room#room{history = [Msg | History]},
-                    Rooms2 = maps:put(RoomId, Room2, Rooms),
-                    {ok, State#state{rooms = Rooms2}};
+                    {ok, State#state{rooms = Rooms#{RoomId => Room2}}};
                 false -> {{error, user_not_in_room}, State}
             end;
         error -> {{error, room_not_found}, State}
